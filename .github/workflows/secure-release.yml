@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   build-and-push:
+    # Production signing and vulnerability gates run only in the release repository.
+    if: github.repository_owner == 'reprewindai-dev'
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
