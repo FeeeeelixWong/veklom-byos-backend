@@ -9,21 +9,28 @@ jobs:
   reconcile:
     name: Run Reconciliation
     runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      ETH_RPC_URL: ${{ secrets.ETH_RPC_URL || 'https://mainnet.base.org' }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      PAGERDUTY_KEY: ${{ secrets.PAGERDUTY_KEY }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Skip reconciliation without a database connection
+        if: env.DATABASE_URL == ''
+        run: |
+          echo "::notice::Skipping reconciliation because DATABASE_URL is not configured for this repository."
+
       - name: Install System Dependencies
+        if: env.DATABASE_URL != ''
         run: |
           sudo apt-get update
           sudo apt-get install -y postgresql-client jq curl
 
       - name: Run Reconcile script
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ETH_RPC_URL: ${{ secrets.ETH_RPC_URL || 'https://mainnet.base.org' }}
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          PAGERDUTY_KEY: ${{ secrets.PAGERDUTY_KEY }}
+        if: env.DATABASE_URL != ''
         run: |
           chmod +x ./scripts/reconcile.sh
           ./scripts/reconcile.sh
