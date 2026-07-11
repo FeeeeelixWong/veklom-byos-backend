@@ -7,7 +7,6 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE: ${{ github.repository }}
   TAG: ${{ github.sha }} # or use a semver/tag if you prefer
 
 permissions:
@@ -20,9 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       digest: ${{ steps.build.outputs.digest }}
-      image_ref: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.TAG }}
+      image: ${{ steps.image.outputs.name }}
+      image_ref: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ env.TAG }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Normalize GHCR image name
+        id: image
+        run: echo "name=$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -44,7 +48,7 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE }}:${{ env.TAG }}
+          tags: ${{ env.REGISTRY }}/${{ steps.image.outputs.name }}:${{ env.TAG }}
           provenance: true
           outputs: type=registry
           # expose digest via output metadata
@@ -115,7 +119,7 @@ jobs:
     env:
       COSIGN_EXPERIMENTAL: "1"
       IMAGE_DIGEST: ${{ needs.build-and-push.outputs.digest }}
-      IMAGE_REF: ghcr.io/${{ github.repository }}@${{ needs.build-and-push.outputs.digest }}
+      IMAGE_REF: ghcr.io/${{ needs.build-and-push.outputs.image }}@${{ needs.build-and-push.outputs.digest }}
     steps:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
@@ -146,14 +150,14 @@ jobs:
       - name: Pull by immutable digest
         run: |
           DIGEST='${{ needs.build-and-push.outputs.digest }}'
-          docker pull ghcr.io/${{ github.repository }}@"$DIGEST"
+          docker pull ghcr.io/${{ needs.build-and-push.outputs.image }}@"$DIGEST"
 
       - name: Run container & health probe
         run: |
           DIGEST='${{ needs.build-and-push.outputs.digest }}'
           docker run -d --rm -p 8088:8088 --name app \
             -e DATABASE_URL="sqlite+aiosqlite:///:memory:" \
-            ghcr.io/${{ github.repository }}@"$DIGEST"
+            ghcr.io/${{ needs.build-and-push.outputs.image }}@"$DIGEST"
           # give it a moment to boot
           for i in {1..20}; do
             if curl -fsS http://localhost:8088/health >/dev/null 2>&1; then
